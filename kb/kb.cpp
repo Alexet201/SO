@@ -1,55 +1,73 @@
 #include <iostream>
-#include "linux_conio.h"
-#include <cctype>    
-#include <chrono>    
-#include <thread>    
+#include "linux_conio.h"   // Libreria para manejo de conio en Linux
+#include <cctype>         //  Para std::tolower
+#include <chrono>        // Para std::chrono
+#include <thread>       // Para std::this_thread::sleep_for (evitar saturar la CPU)
 
-bool activo = true;
+class KBHit {
+    private:
+        bool activo;
+    public:
 
-void continuar() {
-    std::cout << "Continuar\n";
-    activo = true;
-}
+        KBHit() : activo(true) {
+        #ifndef _WIN32
+                    setup_signal_interceptor();
+                    enable_conio_mode(); 
+        #endif
+                }
 
-void error() { 
-    std::cout << "Error\n"; 
-}
+                ~KBHit() {
+        #ifndef _WIN32
+                    disable_conio_mode();
+        #endif
+                }   
+        bool isActivo() const { return activo; }
+        void continuar() {
+            std::cout << "Continuar" << std::endl;
+            activo = true;
+        }
 
-void pausa() {
-    std::cout << "Pausa\n";
-    activo = false;
-}
+        void error() { 
+            std::cout << "Error" << std::endl; 
+        }
 
-void interrupcion() { 
-    std::cout << "Interrupcion I/O\n"; 
-}
+        void pausa() {
+            std::cout << "Pausa" << std::endl;
+            activo = false;
+        }
+
+        void interrupcion() { 
+            std::cout << "Interrupcion I/O" << std::endl; 
+        }
+};
+
 
 int main() {
-#ifndef _WIN32
-    setup_signal_interceptor();
-    enable_conio_mode(); // Requerido por tu implementación para que _kbhit() funcione
-#endif
-
+    KBHit kbhit;
+    std::cout << "Presione 'w' para error"        << std::endl;
+    std::cout << "Presione 'p' para pausa"        << std::endl;
+    std::cout << "Presione 'e' para interrupcion "<< std::endl;
+    std::cout << "Presione 'c' para continuar."   << std::endl;
+    
     while (true) {
         if (_kbhit()) {
             char caracter = std::tolower(_getch());
 
-            if (activo) {
-                if (caracter == 'w') error();
-                else if (caracter == 'p') pausa();
-                else if (caracter == 'e') interrupcion();
-                else if (caracter == 'c') continuar();
+            if (kbhit.isActivo()) {
+                switch (caracter) {
+                    case 'w':   kbhit.error();        break;
+                    case 'p':   kbhit.pausa();        break;
+                    case 'e':   kbhit.interrupcion(); break;
+                    case 'c':   kbhit.continuar();    break;
+                    default:    break;       
+                }
             } else if (caracter == 'c') {
-                continuar();
+                kbhit.continuar();
             }
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-
-#ifndef _WIN32
-    disable_conio_mode();
-#endif
 
     return 0;
 }

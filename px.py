@@ -44,8 +44,6 @@ class KBHit:
     def interrupcion(self):
         print ("Interrupcion I/O")
 
-# Ejemplo de uso con Gestor de Contexto ('with'):
-
 with KBHit() as kb:
     while True:
         if kb.kbhit():
@@ -61,7 +59,7 @@ with KBHit() as kb:
                 elif caracter.lower() == 'c':
                     kb.continuar()
                 
-            elif caracter.lower() == 'c':
+            elif caracter.lower() == 'c': 
                 kb.continuar()
 
         time.sleep(0.05)

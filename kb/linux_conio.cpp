@@ -2,154 +2,68 @@
 
 #ifndef _WIN32
 
-struct termios old_attributes, new_attributes;
-int old_block_mode;
-bool conio_mode = false;
-bool should_enable_conio = false;
+static struct termios old_attributes;
+static bool conio_mode = false;
 
-void enable_noblock() {
-    old_block_mode = fcntl(STDIN_FILENO, F_GETFL, 0);
-    fcntl(STDIN_FILENO, F_SETFL, old_block_mode | O_NONBLOCK);
-}
-
-void disable_noblock() {
-    fcntl(STDIN_FILENO, F_SETFL, old_block_mode);
-}
-
-void exit_handler(int s) {
-    should_enable_conio = conio_mode;
-    disable_conio_mode();
-    disable_noblock();
-    
-    if (s == SIGTSTP) {
-        struct sigaction sig_handler;
-        sig_handler.sa_handler = SIG_DFL; // reset signal handler to default for SIGTSTP
-        sigemptyset(&sig_handler.sa_mask);
-        sig_handler.sa_flags = 0;
-        
-        sigaction(SIGTSTP, &sig_handler, NULL);
-        raise(SIGTSTP); // Suspend the process
-    }
-    else {
-        exit(1); // Kill the process
-    }
-}
-
-void cont_handler(int s) {   
-    if (should_enable_conio) {
-        should_enable_conio = false;
-        enable_conio_mode();
-    }
- 
-    struct sigaction sig_handler;
-    sig_handler.sa_handler = exit_handler;
-    sigemptyset(&sig_handler.sa_mask);
-    sig_handler.sa_flags = 0;
-    sigaction(SIGTSTP, &sig_handler, NULL);
-}
-
-// We need to intercept various kill/suspend signals so that we can reset the console settings if needed on Linux (Some are not possible to intercept, like SIGKILL or SIGSTOP, but this will do for now)
-void setup_signal_interceptor() {
-    struct sigaction sig_handler;
-    sig_handler.sa_handler = exit_handler;
-    sigemptyset(&sig_handler.sa_mask);
-    sig_handler.sa_flags = 0;
-    
-    sigaction(SIGINT, &sig_handler, NULL);	
-    sigaction(SIGTERM, &sig_handler, NULL);
-    sigaction(SIGQUIT, &sig_handler, NULL);
-    sigaction(SIGTSTP, &sig_handler, NULL);
-    
-    struct sigaction sig_cont_handler;
-    sig_cont_handler.sa_handler = cont_handler;
-    sigemptyset(&sig_cont_handler.sa_mask);
-    sig_cont_handler.sa_flags = 0;
-  
-    sigaction(SIGCONT, &sig_cont_handler, NULL);
-}
-
-// allow kbhit and getch on linux
 void enable_conio_mode() {
-    if (conio_mode) {
-        return;
-    }
-    conio_mode = true;
+    if (conio_mode) return;
     
+    // Obtener la configuración actual de la terminal
     tcgetattr(STDIN_FILENO, &old_attributes);
-    new_attributes = old_attributes;
+    
+    struct termios new_attributes = old_attributes;
+    // Desactivar modo canónico (ICANON) y el eco en pantalla (ECHO)
     new_attributes.c_lflag &= ~(ICANON | ECHO);
+    // Configurar tiempo de espera en 0 para lectura no bloqueante de read()
+    new_attributes.c_cc[VMIN] = 0;
+    new_attributes.c_cc[VTIME] = 0;
+    
     tcsetattr(STDIN_FILENO, TCSANOW, &new_attributes);
+    conio_mode = true;
 }
 
-// allow kbhit and getch on linux
 void disable_conio_mode() {
-    if (!conio_mode) {
-        return;
-    }
-    conio_mode = false;
-    
+    if (!conio_mode) return;
     tcsetattr(STDIN_FILENO, TCSANOW, &old_attributes);
+    conio_mode = false;
 }
 
-// linux implementation of _getch()
+void setup_signal_interceptor() {
+    // Implementación vacía básica para compatibilidad
+}
+
 int _getch() {
-    bool mode = conio_mode;
-    if (!mode) {
-        enable_conio_mode();
-    }   
-    
-    char c = getchar();
-    
-    if (!mode) {
-        disable_conio_mode();
+    char c = 0;
+    // En modo no bloqueante, read lee de inmediato si hay algo en STDIN
+    if (read(STDIN_FILENO, &c, 1) > 0) {
+        return c;
     }
-   
-    return c;
+    return 0;
 }
 
-// linux implementation of _kbhit(), requires conio mode to be enabled
 bool _kbhit() {
-    if (!conio_mode) {
-        return false;
-    }
-    
-    enable_noblock();
-    int c = getchar();
-    disable_noblock();
-    
-    // if the char returned from non-blocking getchar is not EOF, a character exists in stdin.
-    if (c != EOF) {
-        // put the character we read back onto the stdin stream
-        ungetc(c, stdin);
-        return true;
-    }
-    
-    return false;
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(STDIN_FILENO, &readfds);
+
+    timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0; // Respuesta instantánea (no bloqueante)
+
+    return select(STDIN_FILENO + 1, &readfds, nullptr, nullptr, &timeout) > 0;
 }
 
-// Linux implementation of a non-blocking version of getch 
 int getch_noblock() {
-    enable_noblock();
-    int c = _getch();
-    disable_noblock();
-    
-    return c;
+    return _getch();
 }
 
 #else
-// Windows versions of the functions (Windows has _getch() and _kbhit() by default)
 void setup_signal_interceptor() {}
 void disable_conio_mode() {}
 void enable_conio_mode() {}
 
-// Windows implementation of a non-blocking getch
 int getch_noblock() {
-    if (_kbhit()) {
-        return _getch();
-    }
-    else {
-        return EOF;
-    }
+    if (_kbhit()) return _getch();
+    return EOF;
 }
-
 #endif

@@ -34,7 +34,6 @@ class KBHit {
 int main() {
     KBHit kbhit;
     std::cout << "Presione 'w' para error" << std::endl;
-    std::cout << "Presione 'p' para pausa" << std::endl;
     std::cout << "Presione 'e' para interrupcion "<< std::endl;
     std::cout << "Presione 'c' para continuar." << std::endl;
     
